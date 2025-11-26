@@ -1,11 +1,10 @@
-// GalleryCapture.jsx
 import { useEffect, useRef, useState } from "react";
 import { Upload, Download, RotateCcw, RotateCw, ZoomIn, ZoomOut, Maximize2, Minimize2, Move, Camera } from "lucide-react";
 
 export default function GalleryCapture() {
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
-  
+
   const [imageUrl, setImageUrl] = useState(null);
   const [templateImage, setTemplateImage] = useState(null);
   const [uploadedImage, setUploadedImage] = useState(null);
@@ -18,7 +17,7 @@ export default function GalleryCapture() {
   // Load template
   useEffect(() => {
     const img = new Image();
-    img.src = "/facebook.png"; // public folder
+    img.src = "/facebook.png";
     img.onload = () => setTemplateImage(img);
   }, []);
 
@@ -32,6 +31,10 @@ export default function GalleryCapture() {
       const img = new Image();
       img.onload = () => {
         setUploadedImage(img);
+        // Reset transformations when new image is loaded
+        setRotation(0);
+        setScale(1);
+        setPosition({ x: 0, y: 0 });
       };
       img.src = e.target.result;
     };
@@ -43,7 +46,6 @@ export default function GalleryCapture() {
     const canvas = canvasRef.current;
     if (!canvas || !templateImage || !uploadedImage) return;
 
-    // Canvas = 1080 × 1080 (template size)
     canvas.width = 1080;
     canvas.height = 1080;
 
@@ -56,36 +58,34 @@ export default function GalleryCapture() {
     ctx.save();
     ctx.clip();
 
-    // Calculate position and scale
-    const imgWidth = uploadedImage.width;
-    const imgHeight = uploadedImage.height;
-    const aspect = imgWidth / imgHeight;
-    
-    let drawWidth, drawHeight;
-    
-    if (aspect > 1) {
-      drawWidth = 1080 * scale;
-      drawHeight = (1080 / aspect) * scale;
-    } else {
-      drawHeight = 1080 * scale;
-      drawWidth = (1080 * aspect) * scale;
-    }
-    
-    // Apply rotation and position
-    ctx.translate(540, 540);
-    ctx.rotate(rotation * Math.PI / 180);
-    ctx.translate(position.x, position.y);
+    // Get preview container size
+    const previewContainer = document.querySelector('.w-72.h-72'); // Find the preview container
+    const previewSize = previewContainer ? 288 : 288; // 72 * 4 (using rem to px conversion)
 
-    // Draw the uploaded image
+    // Calculate the center of the output canvas
+    const outputCenterX = 540;
+    const outputCenterY = 540;
+
+    // Apply transformations in the same order as CSS
+    ctx.save();
+    ctx.translate(outputCenterX, outputCenterY);
+    ctx.rotate(rotation * Math.PI / 180);
+
+    // Calculate scaled image dimensions
+    const scaledWidth = uploadedImage.width * scale;
+    const scaledHeight = uploadedImage.height * scale;
+
+    // Draw image with position offset
     ctx.drawImage(
       uploadedImage,
-      -drawWidth / 2,
-      -drawHeight / 2,
-      drawWidth,
-      drawHeight
+      position.x - scaledWidth / 2,
+      position.y - scaledHeight / 2,
+      scaledWidth,
+      scaledHeight
     );
-    
+
     ctx.restore();
+    ctx.restore(); // End clip
 
     // Draw template on top
     ctx.drawImage(templateImage, 0, 0, 1080, 1080);
@@ -94,7 +94,6 @@ export default function GalleryCapture() {
     const png = canvas.toDataURL("image/png");
     setImageUrl(png);
   };
-
   // Reset all settings
   const resetAll = () => {
     setRotation(0);
@@ -105,33 +104,40 @@ export default function GalleryCapture() {
   // Handle drag start for positioning
   const handleDragStart = (e) => {
     if (!uploadedImage) return;
-    
+
     setIsDragging(true);
     const rect = e.currentTarget.getBoundingClientRect();
+    const computedStyle = window.getComputedStyle(e.currentTarget);
+    const borderLeftWidth = parseFloat(computedStyle.borderLeftWidth);
+    const borderTopWidth = parseFloat(computedStyle.borderTopWidth);
+
     setDragStart({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
+      x: e.clientX - rect.left - borderLeftWidth,
+      y: e.clientY - rect.top - borderTopWidth
     });
   };
 
   // Handle drag move for positioning
   const handleDragMove = (e) => {
     if (!isDragging || !uploadedImage) return;
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
-    const newX = e.clientX - rect.left - dragStart.x;
-    const newY = e.clientY - rect.top - dragStart.y;
-    
+    const computedStyle = window.getComputedStyle(e.currentTarget);
+    const borderLeftWidth = parseFloat(computedStyle.borderLeftWidth);
+    const borderTopWidth = parseFloat(computedStyle.borderTopWidth);
+
+    const currentX = e.clientX - rect.left - borderLeftWidth;
+    const currentY = e.clientY - rect.top - borderTopWidth;
+
+    const deltaX = currentX - dragStart.x;
+    const deltaY = currentY - dragStart.y;
+
     setPosition(prev => ({
-      ...prev,
-      x: prev.x + newX / 10,
-      y: prev.y + newY / 10
+      x: prev.x + deltaX,
+      y: prev.y + deltaY
     }));
-    
-    setDragStart({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
-    });
+
+    setDragStart({ x: currentX, y: currentY });
   };
 
   // Handle drag end
@@ -142,7 +148,7 @@ export default function GalleryCapture() {
   // Handle mouse wheel for zoom
   const handleWheel = (e) => {
     if (!uploadedImage) return;
-    
+
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
     setScale(prev => Math.max(0.5, Math.min(3, prev * delta)));
@@ -173,7 +179,7 @@ export default function GalleryCapture() {
           ) : (
             <div className="flex flex-col items-center">
               {/* Preview area */}
-              <div 
+              <div
                 className="relative w-72 h-72 mb-4 cursor-grab active:cursor-grabbing"
                 onMouseDown={handleDragStart}
                 onMouseMove={handleDragMove}
@@ -182,7 +188,7 @@ export default function GalleryCapture() {
                 onWheel={handleWheel}
               >
                 <div className="w-full h-full relative overflow-hidden rounded-full border-4 border-white/20">
-                  <div 
+                  <div
                     className="w-full h-full rounded-full object-cover"
                     style={{
                       transform: `translate(${position.x}px, ${position.y}px) rotate(${rotation}deg) scale(${scale})`,
@@ -193,10 +199,10 @@ export default function GalleryCapture() {
                     <img
                       src={uploadedImage.src}
                       alt="Uploaded"
-                      className="w-full h-full rounded-full object-cover"
+                      className=" object-cover"
                     />
                   </div>
-                  
+
                   {/* Template overlay preview */}
                   {templateImage && (
                     <img
@@ -234,12 +240,12 @@ export default function GalleryCapture() {
                 >
                   <ZoomIn size={18} />
                 </button>
-                
+
                 {/* Size options */}
                 <div className="flex gap-1">
                   <button
                     onClick={() => setScale(0.7)}
-                    className={`p-2 rounded-full ${scale < 0.8 ? 'bg-teal-500 text-black' : 'bg-zinc-800 hover:bg-zinc-700'}`}
+                    className={`p-2 rounded-full ${Math.abs(scale - 0.7) < 0.1 ? 'bg-teal-500 text-black' : 'bg-zinc-800 hover:bg-zinc-700'}`}
                   >
                     <Minimize2 size={16} />
                   </button>
@@ -251,12 +257,12 @@ export default function GalleryCapture() {
                   </button>
                   <button
                     onClick={() => setScale(1.3)}
-                    className={`p-2 rounded-full ${scale > 1.2 ? 'bg-teal-500 text-black' : 'bg-zinc-800 hover:bg-zinc-700'}`}
+                    className={`p-2 rounded-full ${Math.abs(scale - 1.3) < 0.1 ? 'bg-teal-500 text-black' : 'bg-zinc-800 hover:bg-zinc-700'}`}
                   >
                     <Maximize2 size={16} />
                   </button>
                 </div>
-                
+
                 <button
                   onClick={resetAll}
                   className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-full"
