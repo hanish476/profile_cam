@@ -1,21 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Upload,
-  Download,
-  RotateCcw,
-  RotateCw,
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
-  Minimize2,
-  Move,
-  Camera,
+  Upload, Download, RotateCcw, RotateCw, 
+  ZoomIn, ZoomOut, Maximize2, Minimize2, Move, Camera
 } from "lucide-react";
 
 export default function GalleryCapture() {
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
-
   const [imageUrl, setImageUrl] = useState(null);
   const [templateImage, setTemplateImage] = useState(null);
   const [uploadedImage, setUploadedImage] = useState(null);
@@ -25,14 +16,16 @@ export default function GalleryCapture() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  // Touch state ref (no types)
+  // Touch state
   const touchStartRef = useRef(null);
 
   // Load template
   useEffect(() => {
     const img = new Image();
+    img.crossOrigin = "anonymous";
     img.src = "/facebook.png";
     img.onload = () => setTemplateImage(img);
+    img.onerror = () => console.error("Template failed to load");
   }, []);
 
   // Handle file upload
@@ -54,137 +47,125 @@ export default function GalleryCapture() {
     reader.readAsDataURL(file);
   };
 
-  // Capture final image
+  // Capture function
   const capture = () => {
     const canvas = canvasRef.current;
     if (!canvas || !templateImage || !uploadedImage) return;
 
-    canvas.width = 1080;
-    canvas.height = 1080;
+    const canvasSize = 1080;
+    canvas.width = canvasSize;
+    canvas.height = canvasSize;
 
     const ctx = canvas.getContext("2d");
 
-    const previewSize = 288; // .w-72 h-72
-    const factor = 1080 / previewSize;
+    // Draw selected image first
+    // Calculate scaled image dimensions
+    const imgW = uploadedImage.width;
+    const imgH = uploadedImage.height;
+    const baseScaleX = canvasSize / imgW;
+    const baseScaleY = canvasSize / imgH;
+    const baseScale = Math.max(baseScaleX, baseScaleY);
+    const finalScale = baseScale * scale;
 
-    // --- clip circle (for photo only) ---
+    // Calculate scaled image size
+    const scaledW = imgW * finalScale;
+    const scaledH = imgH * finalScale;
+
+    // Positioning (convert preview position to canvas space)
+    const previewSize = 288;
+    const scaleRatio = canvasSize / previewSize;
+
+    // Draw image centered with transforms
     ctx.save();
-    ctx.beginPath();
-    ctx.arc(540, 540, 540, 0, Math.PI * 2);
-    ctx.clip();
-
-    // --- apply CSS-matching transforms ---
-    ctx.translate(540 + position.x * factor, 540 + position.y * factor);
+    ctx.translate(canvasSize / 2 + position.x * scaleRatio, canvasSize / 2 + position.y * scaleRatio);
     ctx.rotate((rotation * Math.PI) / 180);
-    ctx.scale(scale, scale);
     ctx.drawImage(
       uploadedImage,
-      -uploadedImage.width / 2,
-      -uploadedImage.height / 2
+      -scaledW / 2,
+      -scaledH / 2,
+      scaledW,
+      scaledH
     );
-
     ctx.restore();
 
-    // --- draw template ABOVE photo ---
-    ctx.drawImage(templateImage, 0, 0, 1080, 1080);
+    // Draw circular template on top
+    ctx.drawImage(templateImage, 0, 0, canvasSize, canvasSize);
 
-    setImageUrl(canvas.toDataURL("image/png"));
+    // Export
+    const png = canvas.toDataURL("image/png");
+    setImageUrl(png);
   };
 
-
-  // Reset transformations
+  // Reset all
   const resetAll = () => {
     setRotation(0);
     setScale(1);
     setPosition({ x: 0, y: 0 });
   };
 
-  // === Touch Handlers (Mobile) ===
+  // Mouse handlers
+  const handleMouseDown = (e) => {
+    if (!uploadedImage) return;
+    setIsDragging(true);
+    const rect = e.currentTarget.getBoundingClientRect();
+    setDragStart({
+      x: e.clientX - rect.left - position.x,
+      y: e.clientY - rect.top - position.y,
+    });
+  };
 
+  const handleMouseMove = (e) => {
+    if (!isDragging || !uploadedImage) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const newX = e.clientX - rect.left - dragStart.x;
+    const newY = e.clientY - rect.top - dragStart.y;
+    setPosition({ x: newX, y: newY });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // Touch handlers
   const handleTouchStart = (e) => {
-    if (!uploadedImage || e.touches.length === 0) return;
-    e.preventDefault();
-
+    if (!uploadedImage) return;
     const touches = e.touches;
-    touchStartRef.current = {
-      touches: Array.from(touches),
-      position: { ...position },
-      scale,
-      rotation,
-    };
-
     if (touches.length === 1) {
       const rect = e.currentTarget.getBoundingClientRect();
-      const clientX = touches[0].clientX;
-      const clientY = touches[0].clientY;
       setDragStart({
-        x: clientX - rect.left,
-        y: clientY - rect.top,
+        x: touches[0].clientX - rect.left - position.x,
+        y: touches[0].clientY - rect.top - position.y,
       });
       setIsDragging(true);
     }
-  };
-
-  const getDistance = (t1, t2) => {
-    return Math.sqrt(
-      Math.pow(t2.clientX - t1.clientX, 2) + Math.pow(t2.clientY - t1.clientY, 2)
-    );
-  };
-
-  const getMidpoint = (t1, t2) => {
-    return {
-      x: (t1.clientX + t2.clientX) / 2,
-      y: (t1.clientY + t2.clientY) / 2,
-    };
+    touchStartRef.current = touches.length === 2 ? [...touches] : null;
   };
 
   const handleTouchMove = (e) => {
-    if (!uploadedImage || !touchStartRef.current || e.touches.length === 0) return;
     e.preventDefault();
-
+    if (!uploadedImage) return;
+    
     const touches = e.touches;
-    const start = touchStartRef.current;
-
+    
     if (touches.length === 1 && isDragging) {
       const rect = e.currentTarget.getBoundingClientRect();
-      const currentX = touches[0].clientX - rect.left;
-      const currentY = touches[0].clientY - rect.top;
-
-      const deltaX = currentX - dragStart.x;
-      const deltaY = currentY - dragStart.y;
-
-      setPosition((prev) => ({
-        x: prev.x + deltaX,
-        y: prev.y + deltaY,
-      }));
-
-      setDragStart({ x: currentX, y: currentY });
-    } else if (touches.length === 2 && start.touches && start.touches.length === 2) {
+      const newX = touches[0].clientX - rect.left - dragStart.x;
+      const newY = touches[0].clientY - rect.top - dragStart.y;
+      setPosition({ x: newX, y: newY });
+    } 
+    // Pinch to zoom
+    else if (touches.length === 2 && touchStartRef.current) {
       const [t1, t2] = touches;
-      const [st1, st2] = start.touches;
-
-      const currentDistance = getDistance(t1, t2);
-      const startDistance = getDistance(st1, st2);
-
-      if (startDistance > 0) {
-        const zoom = currentDistance / startDistance;
-        const newScale = Math.max(0.5, Math.min(3, start.scale * zoom));
-        setScale(newScale);
-      }
-
-      const currentMid = getMidpoint(t1, t2);
-      const startMid = getMidpoint(st1, st2);
-      const rect = e.currentTarget.getBoundingClientRect();
-
-      // Avoid using `newScale` before it's defined — fix:
-      const finalScale = Math.max(0.5, Math.min(3, start.scale * (currentDistance / startDistance)));
-      const dx = (currentMid.x - startMid.x) / finalScale;
-      const dy = (currentMid.y - startMid.y) / finalScale;
-
-      setPosition({
-        x: start.position.x + dx,
-        y: start.position.y + dy,
-      });
+      const [st1, st2] = touchStartRef.current;
+      
+      const startDistance = Math.hypot(st1.clientX - st2.clientX, st1.clientY - st2.clientY);
+      const currentDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      
+      const scaleDiff = currentDistance / startDistance;
+      setScale(prev => Math.max(0.5, Math.min(3, prev * scaleDiff)));
+      
+      // Update touch start for next calculation
+      touchStartRef.current = [...touches];
     }
   };
 
@@ -193,54 +174,12 @@ export default function GalleryCapture() {
     touchStartRef.current = null;
   };
 
-  // === Mouse Handlers (Desktop) ===
-
-  const handleDragStart = (e) => {
-    if (!uploadedImage) return;
-
-    setIsDragging(true);
-    const rect = e.currentTarget.getBoundingClientRect();
-    const computedStyle = window.getComputedStyle(e.currentTarget);
-    const borderLeftWidth = parseFloat(computedStyle.borderLeftWidth) || 0;
-    const borderTopWidth = parseFloat(computedStyle.borderTopWidth) || 0;
-
-    setDragStart({
-      x: e.clientX - rect.left - borderLeftWidth,
-      y: e.clientY - rect.top - borderTopWidth,
-    });
-  };
-
-  const handleDragMove = (e) => {
-    if (!isDragging || !uploadedImage) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const computedStyle = window.getComputedStyle(e.currentTarget);
-    const borderLeftWidth = parseFloat(computedStyle.borderLeftWidth) || 0;
-    const borderTopWidth = parseFloat(computedStyle.borderTopWidth) || 0;
-
-    const currentX = e.clientX - rect.left - borderLeftWidth;
-    const currentY = e.clientY - rect.top - borderTopWidth;
-
-    const deltaX = currentX - dragStart.x;
-    const deltaY = currentY - dragStart.y;
-
-    setPosition((prev) => ({
-      x: prev.x + deltaX,
-      y: prev.y + deltaY,
-    }));
-
-    setDragStart({ x: currentX, y: currentY });
-  };
-
-  const handleDragEnd = () => {
-    setIsDragging(false);
-  };
-
+  // Wheel handler
   const handleWheel = (e) => {
-    if (!uploadedImage) return;
     e.preventDefault();
+    if (!uploadedImage) return;
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setScale((prev) => Math.max(0.5, Math.min(3, prev * delta)));
+    setScale(prev => Math.max(0.5, Math.min(3, prev * delta)));
   };
 
   return (
@@ -266,64 +205,66 @@ export default function GalleryCapture() {
             </div>
           ) : (
             <div className="flex flex-col items-center">
+              {/* Preview Area */}
               <div
-                className="relative w-72 h-72 mb-4 cursor-grab active:cursor-grabbing"
-                onMouseDown={handleDragStart}
-                onMouseMove={handleDragMove}
-                onMouseUp={handleDragEnd}
-                onMouseLeave={handleDragEnd}
+                className="relative w-72 h-72 mb-4 cursor-grab active:cursor-grabbing rounded-full overflow-hidden border-4 border-white/20"
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
                 onWheel={handleWheel}
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
               >
-                <div className="w-full h-full relative overflow-hidden rounded-full border-4 border-white/20">
-                  <div
-                    className="w-full h-full"
-                    style={{
-                      transform: `translate(${position.x}px, ${position.y}px) rotate(${rotation}deg) scale(${scale})`,
-                      transformOrigin: 'center',
-                      transition: isDragging ? 'none' : 'transform 0.1s ease'
-                    }}
-                  >
-                    <img
-                      src={uploadedImage.src}
-                      alt="Uploaded"
-                      className=" object-cover"
-                    />
-                  </div>
-
-                  {templateImage && (
-                    <img
-                      src="/facebook.png"
-                      className="absolute inset-0 w-full h-full rounded-full opacity-60 pointer-events-none"
-                      alt="Template"
-                    />
-                  )}
+                {/* Selected image with transforms */}
+                <div
+                  className="w-full h-full rounded-full"
+                  style={{
+                    transform: `translate(${position.x}px, ${position.y}px) rotate(${rotation}deg) scale(${scale})`,
+                    transformOrigin: "center",
+                    transition: isDragging ? "none" : "transform 0.1s ease",
+                  }}
+                >
+                  <img
+                    src={uploadedImage.src}
+                    alt="Preview"
+                    className="w-full h-full object-cover rounded-full"
+                  />
                 </div>
+                
+                {/* Template overlay */}
+                {templateImage && (
+                  <img
+                    src="/facebook.png"
+                    className="absolute inset-0 w-full h-full pointer-events-none rounded-full"
+                    alt="Template"
+                  />
+                )}
               </div>
 
+              {/* Editing Controls */}
               <div className="flex flex-wrap gap-2 mb-4">
                 <button
-                  onClick={() => setRotation((prev) => prev - 5)}
+                  onClick={() => setRotation(prev => prev - 5)}
                   className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-full"
                 >
                   <RotateCcw size={18} />
                 </button>
                 <button
-                  onClick={() => setRotation((prev) => prev + 5)}
+                  onClick={() => setRotation(prev => prev + 5)}
                   className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-full"
                 >
                   <RotateCw size={18} />
                 </button>
                 <button
-                  onClick={() => setScale((prev) => Math.max(0.5, prev - 0.1))}
+                  onClick={() => setScale(prev => Math.max(0.5, prev - 0.1))}
                   className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-full"
                 >
                   <ZoomOut size={18} />
                 </button>
                 <button
-                  onClick={() => setScale((prev) => Math.min(3, prev + 0.1))}
+                  onClick={() => setScale(prev => Math.min(3, prev + 0.1))}
                   className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-full"
                 >
                   <ZoomIn size={18} />
@@ -332,28 +273,31 @@ export default function GalleryCapture() {
                 <div className="flex gap-1">
                   <button
                     onClick={() => setScale(0.7)}
-                    className={`p-2 rounded-full ${Math.abs(scale - 0.7) < 0.1
-                      ? "bg-teal-500 text-black"
-                      : "bg-zinc-800 hover:bg-zinc-700"
-                      }`}
+                    className={`p-2 rounded-full ${
+                      Math.abs(scale - 0.7) < 0.1
+                        ? "bg-teal-500 text-black"
+                        : "bg-zinc-800 hover:bg-zinc-700"
+                    }`}
                   >
                     <Minimize2 size={16} />
                   </button>
                   <button
                     onClick={() => setScale(1)}
-                    className={`p-2 rounded-full ${Math.abs(scale - 1) < 0.1
-                      ? "bg-teal-500 text-black"
-                      : "bg-zinc-800 hover:bg-zinc-700"
-                      }`}
+                    className={`p-2 rounded-full ${
+                      Math.abs(scale - 1) < 0.1
+                        ? "bg-teal-500 text-black"
+                        : "bg-zinc-800 hover:bg-zinc-700"
+                    }`}
                   >
                     <Move size={16} />
                   </button>
                   <button
                     onClick={() => setScale(1.3)}
-                    className={`p-2 rounded-full ${Math.abs(scale - 1.3) < 0.1
-                      ? "bg-teal-500 text-black"
-                      : "bg-zinc-800 hover:bg-zinc-700"
-                      }`}
+                    className={`p-2 rounded-full ${
+                      Math.abs(scale - 1.3) < 0.1
+                        ? "bg-teal-500 text-black"
+                        : "bg-zinc-800 hover:bg-zinc-700"
+                    }`}
                   >
                     <Maximize2 size={16} />
                   </button>
@@ -369,8 +313,7 @@ export default function GalleryCapture() {
 
               <button
                 onClick={capture}
-                disabled={!templateImage}
-                className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center shadow-xl active:scale-95 disabled:opacity-40"
+                className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center shadow-xl active:scale-95"
               >
                 <Camera size={28} />
               </button>
@@ -382,7 +325,7 @@ export default function GalleryCapture() {
           <img
             src={imageUrl}
             className="w-64 h-64 rounded-full border-4 border-white/20 object-cover mb-6"
-            alt="Final"
+            alt="Final Profile Picture"
           />
 
           <div className="flex gap-4">
@@ -395,7 +338,7 @@ export default function GalleryCapture() {
 
             <a
               href={imageUrl}
-              download={`profile-${Date.now()}.png`}
+              download={`profile-${new Date().getTime()}.png`}
               className="px-5 py-2 rounded-lg bg-teal-500 text-black font-bold hover:bg-teal-400 flex items-center gap-2"
             >
               <Download size={18} /> Save
