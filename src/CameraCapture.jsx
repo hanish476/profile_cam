@@ -1,4 +1,3 @@
-// CameraCapture.jsx
 import { useEffect, useRef, useState } from "react";
 import { Camera, Download, RotateCcw } from "lucide-react";
 
@@ -68,7 +67,7 @@ export default function CameraCapture() {
     ctx.save();
     ctx.clip();
 
-    // Draw scaled video perfectly inside circle
+    // Draw scaled video perfectly inside circle (flipped horizontally)
     const vW = video.videoWidth;
     const vH = video.videoHeight;
     const aspectVideo = vW / vH;
@@ -87,6 +86,10 @@ export default function CameraCapture() {
       startY = (1080 - drawH) / 2;
       startX = 0;
     }
+
+    // Flip horizontally before drawing
+    ctx.translate(1080, 0); // Move to the right edge
+    ctx.scale(-1, 1); // Flip horizontally
 
     ctx.drawImage(video, startX, startY, drawW, drawH);
     ctx.restore();
@@ -120,6 +123,7 @@ export default function CameraCapture() {
               className={`w-full h-full rounded-full object-cover border-4 border-white/20 ${
                 isReady ? "" : "opacity-40"
               }`}
+              style={{ transform: 'scaleX(-1)' }} // Mirror the preview
             />
 
             {/* Template overlay preview */}

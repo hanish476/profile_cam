@@ -58,8 +58,13 @@ export default function GalleryCapture() {
 
     const ctx = canvas.getContext("2d");
 
+    // Create circular clipping path first
+    ctx.beginPath();
+    ctx.arc(canvasSize / 2, canvasSize / 2, canvasSize / 2, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+
     // Draw selected image first
-    // Calculate scaled image dimensions
     const imgW = uploadedImage.width;
     const imgH = uploadedImage.height;
     const baseScaleX = canvasSize / imgW;
@@ -67,15 +72,12 @@ export default function GalleryCapture() {
     const baseScale = Math.max(baseScaleX, baseScaleY);
     const finalScale = baseScale * scale;
 
-    // Calculate scaled image size
     const scaledW = imgW * finalScale;
     const scaledH = imgH * finalScale;
 
-    // Positioning (convert preview position to canvas space)
     const previewSize = 288;
     const scaleRatio = canvasSize / previewSize;
 
-    // Draw image centered with transforms
     ctx.save();
     ctx.translate(canvasSize / 2 + position.x * scaleRatio, canvasSize / 2 + position.y * scaleRatio);
     ctx.rotate((rotation * Math.PI) / 180);
@@ -88,7 +90,7 @@ export default function GalleryCapture() {
     );
     ctx.restore();
 
-    // Draw circular template on top
+    // Draw template on top (within clip)
     ctx.drawImage(templateImage, 0, 0, canvasSize, canvasSize);
 
     // Export
@@ -153,7 +155,6 @@ export default function GalleryCapture() {
       const newY = touches[0].clientY - rect.top - dragStart.y;
       setPosition({ x: newX, y: newY });
     } 
-    // Pinch to zoom
     else if (touches.length === 2 && touchStartRef.current) {
       const [t1, t2] = touches;
       const [st1, st2] = touchStartRef.current;
@@ -164,7 +165,6 @@ export default function GalleryCapture() {
       const scaleDiff = currentDistance / startDistance;
       setScale(prev => Math.max(0.5, Math.min(3, prev * scaleDiff)));
       
-      // Update touch start for next calculation
       touchStartRef.current = [...touches];
     }
   };
@@ -217,30 +217,35 @@ export default function GalleryCapture() {
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
               >
-                {/* Selected image with transforms */}
-                <div
-                  className="w-full h-full rounded-full"
-                  style={{
-                    transform: `translate(${position.x}px, ${position.y}px) rotate(${rotation}deg) scale(${scale})`,
-                    transformOrigin: "center",
-                    transition: isDragging ? "none" : "transform 0.1s ease",
-                  }}
-                >
-                  <img
-                    src={uploadedImage.src}
-                    alt="Preview"
-                    className="w-full h-full object-cover rounded-full"
-                  />
+                {/* Apply circular mask to preview */}
+                <div className="w-full h-full rounded-full overflow-hidden relative">
+                  {/* Selected image with transforms */}
+                  <div
+                    className="w-full h-full"
+                    style={{
+                      transform: `translate(${position.x}px, ${position.y}px) rotate(${rotation}deg) scale(${scale})`,
+                      transformOrigin: "center",
+                      transition: isDragging ? "none" : "transform 0.1s ease",
+                    }}
+                  >
+                    <img
+                      src={uploadedImage.src}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  
+                  {/* Template overlay with circular mask */}
+                  {templateImage && (
+                    <div className="absolute inset-0 w-full h-full rounded-full overflow-hidden">
+                      <img
+                        src="/facebook.png"
+                        className="w-full h-full object-cover pointer-events-none"
+                        alt="Template"
+                      />
+                    </div>
+                  )}
                 </div>
-                
-                {/* Template overlay */}
-                {templateImage && (
-                  <img
-                    src="/facebook.png"
-                    className="absolute inset-0 w-full h-full pointer-events-none rounded-full"
-                    alt="Template"
-                  />
-                )}
               </div>
 
               {/* Editing Controls */}
