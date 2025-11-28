@@ -318,9 +318,9 @@ export default function GalleryCapture() {
 
               <button
                 onClick={capture}
-                className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center shadow-xl active:scale-95"
+                 className="px-5 py-2 rounded-lg bg-white text-black font-bold flex items-center gap-2"
               >
-                <Camera size={28} />
+                    <span className="text-base font-semibold">save</span>
               </button>
             </div>
           )}
@@ -346,7 +346,7 @@ export default function GalleryCapture() {
               download={`profile-${new Date().getTime()}.png`}
               className="px-5 py-2 rounded-lg bg-teal-500 text-black font-bold hover:bg-teal-400 flex items-center gap-2"
             >
-              <Download size={18} /> Save
+              <Download size={18} /> Download
             </a>
           </div>
         </div>
